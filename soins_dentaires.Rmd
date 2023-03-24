@@ -1,0 +1,841 @@
+---
+title: "Économétrie : Projet Final"
+author: "Aybuké BICAT & Guillaume DEVANT"
+date: "Printemps 2023"
+output: 
+  html_document:
+    theme: united
+    css: custom.css
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css, echo=FALSE}
+h1 {
+  text-align: center;
+  color: #267334;
+  font-weight: bold;
+}
+```
+
+```{css, echo=FALSE}
+h2 {
+  color: #267334 ;
+}
+```
+
+```{css, echo=FALSE}
+h3 {
+  color: #267334 ;
+}
+```
+
+```{css, echo=FALSE}
+h4 {
+  color: #267334 ;
+}
+```
+
+```{css, echo=FALSE}
+.tocify-item{
+color: rgba(63,62,124,1);
+}
+
+.tocify {
+width: 20%;
+max-height: 90%;
+overflow: auto;
+margin-left: 2%;
+position: fixed;
+border: 1px solid rgba(63,62,124,1);
+border-radius: 0px;
+}
+
+.tocify-item.active, .tocify-item.active:focus, .tocify-item.active:hover {
+color: rgba(63,62,124,1);
+background-color: rgba(231, 244, 221, 0.8);
+border: rgba(63,62,124,1);
+}
+```
+
+```{r, echo=FALSE}
+url <- "https://pbs.twimg.com/media/EQCyr-qW4AEA-TZ.jpg"
+```
+
+```{r, echo=FALSE}
+url2 <- "https://www.zupimages.net/up/23/07/0y92.jpg"
+```
+
+<center><img src="`r url`"></center>
+
+```{r options_chunk, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE,
+                      fig.align = 'center',fig.height=5, fig.width=8)
+```
+
+```{r packages}
+library(haven)
+library(ggplot2)
+library(tidyverse)
+library(patchwork)
+library(kableExtra)
+library(stargazer)
+library(lmtest)
+library(plm)
+library(caschrono)
+library(astsa)
+library(forecast)
+library(DT)
+library(knitr)
+library(plotly)
+library(dplyr)
+```
+
+```{r chargement des données}
+data <- read_dta("data_V3.dta")
+data <- data[data$age != 996 & data$educyr <= 90,]
+```
+
+# EXERCICE 1 : Les dépenses en soins dentaires
+
+Le but de cet exercice est d’étudier les déterminants des dépenses en soins dentaires.
+Pour ce faire, nous disposons d’une base de données de panel. Elle a été construite à partir des réponses de 73 017
+individus vivant aux Etats-Unis et qui ont été interrogés en 2015 et 2019.
+
+Les variables sont les suivantes :
+
+- *year* : l’année d’enquête.
+- *id* : l’identifiant individuel.
+- *dvexptot* : le total des dépenses en soin dentaire.
+- *age* : l’âge, en années.
+- *sex* : le genre (2 pour une femme, 1 pour un homme).
+- *educyr* : le nombre d’années d’éducation.
+- *inctot* : le revenu total personnel.
+- *hinotcov* : n’a pas d’assurance santé (en excluant les plans d’épargne personnels) (1 non, 2 oui).
+- *workev* : a déjà travaillé (1 non, 2 oui, 7 a refusé de répondre, 8 non vérifié, 9 ne sait pas).
+- *himcare* : a l’assurance medicare (1 non, 2 oui).
+
+Avant de commencer notre travail, nous avons étudié longuement la base de données afin de supprimer les variables aberrantes telles que des individus qui avaient plusieurs centaines d'années (ou bien certains qui avaient changé de sexe). Ce sont, a priori, des erreurs de saisie. Nous avons également modifié certaines variables afin de faciliter notre étude.
+
+## Question 1: Introduction
+#### En quoi est-ce intéressant d’analyser les déterminants des dépenses en soin dentaire ?
+
+Il est possible d'analyser les **déterminants des dépenses en soins dentaires** pour déterminer s'il existe des relations avec divers facteurs tels que le revenu, le sexe, le niveau d'éducation, l'âge, la possession d'une assurance maladie et la présence d'une assurance Medicare. Cette analyse peut fournir des informations sur les **inégalités** dans l'accès aux soins dentaires. Elle peut également aider à comprendre comment les différences socio-économiques influencent les dépenses en soins dentaires.
+
+## Question 2: Statistiques descriptives
+#### Faites un tableau de statistiques descriptives avec les variables dont vous disposez.
+
+Les individus dans notre base de données ont **en moyenne 48 ans** et sont tous des **adultes**. Ils ont généralement passé entre **12 et 16 années à étudier**. Leurs **revenus sont très variés**, ce qui nous indique que les individus proviennent de plusieurs classes sociales différentes. En moyenne, les dépenses en soins dentaires sont de **307,5 dollars** par an et par personne, mais cette moyenne est influencée par des valeurs extrêmement élevées. La médiane de ces dépenses est de 0 dollars, ce qui semble cohérent car peu de personne ont des dépenses dentaires, mais lorsqu'une personne doit payer pour des soins dentaires, cela coûte cher.
+
+```{r}
+summary(data[,c("age","educyr","inctot","dvexptot")]) %>%
+  kbl() %>%
+  kable_minimal()
+```
+
+Il y a **`r round(sum(data$sex == 2) / nrow(data),2)*100`% de femmes** et **`r round(sum(data$sex == 1) / nrow(data),2)*100 `% d'hommes** dans la base de données. Il y a donc un peu plus de femmes que d'hommes, mais le déséquilibre n'est pas très important. Selon les données de la Banque Mondiale, la part de femme aux USA varie entre 50 et 51% entre 1960 et 2021. ([source](https://donnees.banquemondiale.org/indicator/SP.POP.TOTL.FE.ZS?locations=US)).
+
+**Un quart** des individus présent dans la base de données **ont l'assurance medicare**, c'est un programme de santé publique visant les personnes handicapées et les personnes âgées afin de leur donner une couverture medicale. 
+
+Nous avons **`r round(sum(data$hinotcov == 2) /nrow(data),2)*100`%** des individus qui **n'ont pas d'assurance santé**.
+
+
+```{r}
+(ggplot(data, aes(x = sex)) +
+  geom_bar(color = "black", fill = "#267334", alpha = 0.8, width=0.6) +
+  ggtitle("Sexe") +
+  labs(subtitle = "1 : homme et 2 : femme")+
+  ylab("Effectifs")+
+  theme_bw()+ 
+ggplot(data, aes(x = year)) +
+  geom_bar(color = "black", fill = "#267334", alpha = 0.8) +
+  ggtitle("Année") +
+  ylab("Effectifs")+
+  theme_bw())/
+(ggplot(data, aes(x = himcare)) +
+  geom_bar(color = "black", fill = "#267334", alpha = 0.8, width=0.6) +
+  ggtitle("Assurance medicare") +
+  labs(subtitle = "1 non et 2 oui")+
+  ylab("Effectifs")+
+  theme_bw()+ 
+ggplot(data, aes(x = hinotcov)) +
+  geom_bar(color = "black", fill = "#267334", alpha = 0.8, width=0.6) +
+  ggtitle("N’a pas d’assurance santé") +
+  labs(subtitle = "1 non et 2 oui")+
+  ylab("Effectifs")+
+  theme_bw()) 
+```
+
+
+Nous pouvons constater que **`r round(sum(data$workev == 2) / nrow(data),2)*100`%** des individus présents dans la base de données **ont déjà travaillé**. On a aussi la surprise de voir qu'une petite poignée d'individus ne savent pas s'ils ont déjà travailler ou non.
+
+```{r}
+tab <- as.matrix(table(data[,c("workev")]))
+rownames(tab) <- c("non","oui","a refusé de répondre","non vérifié","ne sait pas")
+tab <- cbind(tab,tab/sum(tab)*100) 
+colnames(tab) <- c("Effectifs","Proportions (%)")
+```
+
+```{r}
+tab %>% round(2)%>%
+  kbl(caption = "A déjà travaillé ?", booktabs = T, linesep = "") %>%
+  kable_minimal(full_width = F)
+```
+
+Par la suite, nous allons modifier la varible `workev`, nous garderons seulement les réponses `oui` et `non`, elle fonctionnera donc comme les autres indicatrices.
+
+## Question 3: Modèle poolé
+#### Estimez le modèle poolé suivant en corrigeant les écarts-types 
+
+$dvexptot_{it}= \beta_0 + \beta_1age_{it} + \beta_2sex_{it} + \beta_3educyr_{i} + \beta_4inctot_{it} + \beta_5hinotcov_{it} + \beta_6workev_i + \beta_7himcare_{it}  + \upsilon_{it}$
+
+avec $\upsilon_{it} = \epsilon_{it} + c_i$
+
+
+
+```{r}
+data$sex <- as.factor(data$sex)
+data$himcare <- as.factor(data$himcare)
+data$hinotcov <- as.factor(data$hinotcov)
+data$workev <- as.factor(data$workev)
+```
+
+```{r}
+library(stats)
+
+data <- data[data$age != 996 & data$educyr <= 90 & (data$workev == 1 | data$workev == 2),]
+```
+
+
+```{r}
+pool <- plm(dvexptot ~ age + sex + educyr + inctot + hinotcov + workev + himcare, data = data,
+                   model="pooling", index=c("id","year"))
+
+pool_cor <- coeftest(pool, vcov=vcovHC(pool, method="arellano"))
+```
+
+En corrigeant les écarts-types, nous avons **amélioré la précision** de nos estimations, à l'exception de la variable `himcare`.
+
+De plus, nous constatons que presque tous les coefficients du modèle sont **significatifs au seuil de 1%**, ce qui indique que chaque variable explicative a un impact statistiquement significatif sur la variable dépendante. `workev` est la seule variable non significative.
+
+```{r, results='asis', include=FALSE}
+stargazer(pool,pool_cor, type = 'html')
+```
+
+
+***
+
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"></td><td colspan="2"><em>Variable dépendante : dvexptot</em></td></tr>
+<tr><td></td><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td><em>Modèle poolé</em></td><td><em>Modèle poolé corrigé</em></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>4.159<sup>***</sup></td><td>4.159<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.283)</td><td>(0.283)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>63.037<sup>***</sup></td><td>63.037<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.089)</td><td>(7.492)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td>26.216<sup>***</sup></td><td>26.216<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(1.280)</td><td>(1.264)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.002<sup>***</sup></td><td>0.002<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0001)</td><td>(0.0001)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-97.688<sup>***</sup></td><td>-97.688<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(11.664)</td><td>(7.426)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>6.474</td><td>6.474</td></tr>
+<tr><td style="text-align:left"></td><td>(11.752)</td><td>(11.990)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>72.639<sup>***</sup></td><td>72.639<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(11.882)</td><td>(14.296)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td>-349.614<sup>***</sup></td><td>-349.614<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(22.216)</td><td>(22.070)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>103,120</td><td></td></tr>
+<tr><td style="text-align:left">R<sup>2</sup></td><td>0.024</td><td></td></tr>
+<tr><td style="text-align:left"> R<sup>2</sup> ajusté</td><td>0.024</td><td></td></tr>
+<tr><td style="text-align:left">F Statistic</td><td>363.255<sup>***</sup> (df = 7; 103112)</td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+***
+
+
+Notre **individu de référence** est un homme qui n'a pas d'assurance Medicare, qui a une assurance santé privée et qui n'a jamais travaillé. Le coefficient associé à `himcare` est positif, montrant que **l'assurance Medicare peut augmenter les dépenses de santé dentaire**. Le coefficient de `hinotcov` est négatif, reflétant **l'impact négatif de ne pas avoir d'assurance santé** sur les dépenses de santé. Les années d'études, l'âge, un revenu élevé et l'expérience professionnelle sont des facteurs qui augmentent les dépenses de santé. Etre une femme a également un impact positif sur les dépenses de santé.
+
+## Question 4: Modèle à effets aléatoires
+#### Réécrivez l’équation 1 dans le cadre d’un modèle à erreurs composées (ou effets aléatoires). Estimez ce modèle (n’oubliez pas de corriger les erreurs-types).
+
+$dvexptot_{it}= \beta_0 + \beta_1age_{it} + \beta_2sex_{it} + \beta_3educyr_{i} + \beta_4inctot_{it} +\beta_5hinotcov_{it} + \beta_6workev_i + \beta_7himcare_{it} + c_i + \epsilon_{it}$
+
+```{r}
+pool_ea <- plm(dvexptot ~ age + sex + educyr + inctot + hinotcov + workev + himcare, data = data,
+                   model="random", effect="individual",index=c("id","year"))
+pool_ea_corr <- coeftest(pool_ea, vcov=vcovHC(pool_ea, method="arellano"))
+```
+
+```{r, results='asis', include=FALSE}
+stargazer(pool_ea,pool_ea_corr, type = 'html')
+```
+
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"></td><td colspan="2"><em>Variable dépendante : dvexptot</em></td></tr>
+<tr><td></td><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td><em>Modèle EA </em></td><td><em>Modèle EA corrigé</em></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>4.104<sup>***</sup></td><td>4.104<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.297)</td><td>(0.284)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>62.651<sup>***</sup></td><td>62.651<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.462)</td><td>(7.476)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td>26.313<sup>***</sup></td><td>26.313<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(1.345)</td><td>(1.262)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.002<sup>***</sup></td><td>0.002<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0001)</td><td>(0.0001)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-97.005<sup>***</sup></td><td>-97.005<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(12.096)</td><td>(7.553)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>6.564</td><td>6.564</td></tr>
+<tr><td style="text-align:left"></td><td>(12.315)</td><td>(12.008)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>74.702<sup>***</sup></td><td>74.702<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(12.452)</td><td>(14.360)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td>-347.061<sup>***</sup></td><td>-347.061<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(23.305)</td><td>(22.091)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>103,120</td><td></td></tr>
+<tr><td style="text-align:left">R<sup>2</sup></td><td>0.022</td><td></td></tr>
+<tr><td style="text-align:left"> R<sup>2</sup> ajusté </td><td>0.022</td><td></td></tr>
+<tr><td style="text-align:left">F Statistic</td><td>2,284.897<sup>***</sup></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+***
+
+## Question 5: Comparaison Poolé & E.A.
+#### Comparez les résultats à ceux obtenus par les MCO.
+
+```{r, results='asis', include = FALSE}
+stargazer(pool_cor, pool_ea_corr, type = 'html')
+```
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td colspan="2"></td></tr>
+<tr><td style="text-align:left"></td><td><em>Modèle poolé    </em></td><td><em>Modèle EA</em></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>4.159<sup>***</sup></td><td>4.104<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.283)</td><td>(0.284)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>63.037<sup>***</sup></td><td>62.651<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.492)</td><td>(7.476)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td>26.216<sup>***</sup></td><td>26.313<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(1.264)</td><td>(1.262)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.002<sup>***</sup></td><td>0.002<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0001)</td><td>(0.0001)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-97.688<sup>***</sup></td><td>-97.005<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.426)</td><td>(7.553)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>6.474</td><td>6.564</td></tr>
+<tr><td style="text-align:left"></td><td>(11.990)</td><td>(12.008)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>72.639<sup>***</sup></td><td>74.702<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(14.296)</td><td>(14.360)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td>-349.614<sup>***</sup></td><td>-347.061<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(22.070)</td><td>(22.091)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+***
+
+Il y a **peu de différence** entre le modèle poolé et le modèle à effets aléatoires. Les signes, les écarts-types et les coefficients sont **similaires** dans les deux modèles. Cependant, le choix peut se porter sur un modèle ou sur l'autre en fonction des hypothèses de base. En effet, un modèle poolé ou un modèle à effets aléatoires doit respecter la condition $Cov(c_i,x_it) = 0$. Mais on sait que l'estimateur des MCO sur le modèle poolé est convergent (si la condition précédente est vérifiée) mais non efficace, c'est pourquoi un modèle à **effets aléatoires est préférable**.
+
+Notons que l'on peut considérer que le revenu total d'un individu peut être corrélé avec le nombre d'années d'éducation qu'il a reçues. Dans ce cas, on est un peu embêté pour choisir entre ces deux modèles car ils sont **probablement non convergents**. Cependant dans le cas d'un modèle à effets fixes nous pouvons avoir un modèle convergent dans le cas où $Cov(c_i,x_it) ≠ 0$
+
+
+## Question 6: Modèle à effets fixes
+#### Ecrivez et estimez le modèle à effets fixes individuels. Comparez les résultats à ceux obtenus avec le modèle à effets aléatoires.
+
+Nous allons effectuer un **modèle within**. Comme nous sommes dans un modèle à effets fixes on s'attend à ce que nous n'ayons pas de coefficients pour les variables qui ne varient pas dans le temps.
+
+$dvexptot_{it} - \overline{dvexptot_{it}} = \beta_1(age_{it} - \overline{age_{it}}) + \beta_2(sex_{it} - \overline{sex_{it}}) + \beta_3(educyr_{i} - \overline{educyr_{i}})+ \beta_4(inctot_{it} - \overline{inctot_{it}})$
+$+ \beta_5(hinotcov_{it}- \overline{hinotcov_{it}}) + \beta_6(workev_i - \overline{workev_it}) + \beta_7(himcare_{it} - \overline{workev_i}) + (\epsilon_{it} - \overline{\epsilon_{it}})$
+
+```{r}
+fixed <- plm(dvexptot ~ age + sex + educyr + inctot + hinotcov + workev + himcare, data = data,
+                   model="within", index = c("id", "year"))
+
+fixed_cor <- coeftest(fixed, vcov=vcovHC(fixed, method="arellano"))
+```
+
+```{r, results='asis', include = FALSE}
+stargazer(fixed_cor,pool_ea_corr, type = 'html')
+```
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"></td><td colspan="2"><em>Variable dépendante : dvexptot</em></td></tr>
+<tr><td></td><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td colspan="2"></td></tr>
+<tr><td style="text-align:left"></td><td><em>Modèle EF</em></td><td><em>Modèle EA</em></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>-6.064</td><td>4.104<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.195)</td><td>(0.284)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>-39.470<sup>**</sup></td><td>62.651<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(15.847)</td><td>(7.476)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td></td><td>26.313<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td></td><td>(1.262)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.001<sup>***</sup></td><td>0.002<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0003)</td><td>(0.0001)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-37.540</td><td>-97.005<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(27.801)</td><td>(7.553)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>-19.919</td><td>6.564</td></tr>
+<tr><td style="text-align:left"></td><td>(33.522)</td><td>(12.008)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>242.199<sup>***</sup></td><td>74.702<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(80.002)</td><td>(14.360)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td></td><td>-347.061<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td></td><td>(22.091)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+***
+Pour toutes les variables fixes dans le temps, nous n'avons donc pas de coefficient dans le modèle à effets fixes, contrairement à un modèle à effets aléatoires. De plus, nous constatons que dans le modèle à effets aléatoires, **peu de coefficients sont statistiquement significatifs**, seuls `inctot` et `himcare` sont significatifs au seuil de 1%, alors que dans notre modèle à effets aléatoires, presque tous les coefficients sont significatifs. Cependant, prenons la variable `himcare`, qui est significative dans les deux modèles, on constate qu'elle a un écart-type très important dans le modèle à effets fixes (le coefficient est également bien plus élevé).
+
+## Question 7: Comparaison EA & EF
+#### Entre le modèle à effets aléatoires, et le modèle à effets fixes, quel modèle choisiriez-vous ? Expliquez la procédure que vous utilisez pour déterminer votre choix.
+
+```{r, results='asis', include = FALSE}
+stargazer(pool_ea_corr,fixed_cor, type = 'html')
+```
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td colspan="2"></td></tr>
+<tr><td style="text-align:left"></td><td>EA</td><td> EF</td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>4.104<sup>***</sup></td><td>-6.064</td></tr>
+<tr><td style="text-align:left"></td><td>(0.284)</td><td>(7.195)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>62.651<sup>***</sup></td><td>-39.470<sup>**</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.476)</td><td>(15.847)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td>26.313<sup>***</sup></td><td></td></tr>
+<tr><td style="text-align:left"></td><td>(1.262)</td><td></td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.002<sup>***</sup></td><td>0.001<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0001)</td><td>(0.0003)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-97.005<sup>***</sup></td><td>-37.540</td></tr>
+<tr><td style="text-align:left"></td><td>(7.553)</td><td>(27.801)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>6.564</td><td>-19.919</td></tr>
+<tr><td style="text-align:left"></td><td>(12.008)</td><td>(33.522)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>74.702<sup>***</sup></td><td>242.199<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(14.360)</td><td>(80.002)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td>-347.061<sup>***</sup></td><td></td></tr>
+<tr><td style="text-align:left"></td><td>(22.091)</td><td></td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+***
+
+Il n'y a donc **apriori** aucun doute sur le modèle à choisir, c'est le modèle à effets aléatoires car les coefficients sont significatifs, les écarts-types sont plus faibles et, en plus, nous avons des coefficients pour les variables fixes dans le temps. Cependant il ne faut pas oublier que pour un modèle à effets aléatoires, nous devons respecter cette hypothése $Cov(c_i,x_it) = 0$ si nous voulons un modèle convergent. L'avantage d'un modèle à effets fixes c'est qu'il est convergent si $Cov(c_i,x_it) ≠ 0$, et ici on peut penser que cette corrélation n'est pas nulle (corrélaltion entre l'éducation et le revenu notamment). Afin d'être sûr, nous pouvons réaliser un **test d'Hausman**, cela nous permettra de nous aider à faire notre choix entre le modèle à effets fixes ou à effets aléatoires.
+
+$$\begin{cases} H_{0}: Cov(c_i,x_{it}) = 0\\
+H_{1}: Cov(c_i,x_{it}) ≠ 0 \end{cases}$$
+
+```{r}
+library(lmtest)
+test<-phtest(pool_ea,fixed)
+```
+
+
+```{r}
+tabtest <- rbind(c("Statistique","$p-value$","$ddl$","Alternative"),
+c(round(test$statistic[[1]],2), round(test$p.value,5),
+test$parameter[[1]], test$alternative))
+
+tabtest %>%
+  kbl(caption = "Test d'Hausman", booktabs = T, linesep = "", ) %>%
+  kable_minimal(full_width = T)
+```
+
+On rejette donc $H_O$ car la **p-value est inférieur à 5%**. Donc selon le test d'Hausman $Cov(c_i,x_it) ≠ 0$. On va donc **préferer un modèle à effets fixes** afin d'avoir un modèle convergent.
+
+## Question 8: Le meilleur modèle
+#### Parmi maintenant l’ensemble des modèles présentés, quel est le modèle que vous choisiriez ?
+
+On va alors préférer choisir le **modèle à effets fixes**. En effet, selon le test réaliser précedemment il y aurait une corrélation entre les effets individuels et nos variables observés.
+
+```{r, results='asis', include = FALSE}
+stargazer(pool_cor,pool_ea_corr,fixed_cor, type = 'html')
+```
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="4" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"></td><td colspan="3"><em>Dependent variable:</em></td></tr>
+<tr><td></td><td colspan="3" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td colspan="3"></td></tr>
+<tr><td style="text-align:left"></td><td>poolé</td><td>EA</td><td>EF</td></tr>
+<tr><td colspan="4" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>4.159<sup>***</sup></td><td>4.104<sup>***</sup></td><td>-6.064</td></tr>
+<tr><td style="text-align:left"></td><td>(0.283)</td><td>(0.284)</td><td>(7.195)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">sex2</td><td>63.037<sup>***</sup></td><td>62.651<sup>***</sup></td><td>-39.470<sup>**</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(7.492)</td><td>(7.476)</td><td>(15.847)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">educyr</td><td>26.216<sup>***</sup></td><td>26.313<sup>***</sup></td><td></td></tr>
+<tr><td style="text-align:left"></td><td>(1.264)</td><td>(1.262)</td><td></td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.002<sup>***</sup></td><td>0.002<sup>***</sup></td><td>0.001<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0001)</td><td>(0.0001)</td><td>(0.0003)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-97.688<sup>***</sup></td><td>-97.005<sup>***</sup></td><td>-37.540</td></tr>
+<tr><td style="text-align:left"></td><td>(7.426)</td><td>(7.553)</td><td>(27.801)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>6.474</td><td>6.564</td><td>-19.919</td></tr>
+<tr><td style="text-align:left"></td><td>(11.990)</td><td>(12.008)</td><td>(33.522)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>72.639<sup>***</sup></td><td>74.702<sup>***</sup></td><td>242.199<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(14.296)</td><td>(14.360)</td><td>(80.002)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td style="text-align:left">Constant</td><td>-349.614<sup>***</sup></td><td>-347.061<sup>***</sup></td><td></td></tr>
+<tr><td style="text-align:left"></td><td>(22.070)</td><td>(22.091)</td><td></td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td><td></td></tr>
+<tr><td colspan="4" style="border-bottom: 1px solid black"></td></tr><tr><td colspan="4" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="3" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+***
+
+## Question 9: Conclusion
+#### Comment synthétiseriez vous vos résultats concernant les dépenses en soin dentaire ?
+
+Avec la décision prise à la question précédemment on peut dire que les dépenses en soin dentaire s'explique par trois variables, le `sex`, la possesion ou non de l'aide Medicaire et du revenu des individus. Plus un individu est riche et plus il pourra **allouer d'argent à ses dépenses dentaires**. L'**aide medicare** permet également d'**augmenter les dépenses** en soin dentaire.
+
+Cependant on peut-être interloqué de la présence du sexe comme variable explicative alors que nous avons décider de prendre un modèle à effets fixes.
+
+## Question 10: Données incohérentes
+#### Il est possible que les réponses croisées de certaines variables soient incohérentes pour certains individus. Le cas échéant, repérez ces observations et, si nécessaire, estimez les différents modèles en les incluant puis en les supprimant. Vos résultats changent-ils ?
+
+On remarque que dans le modèle à effets fixes, il y a encore la variable `sex`, cela signifie alors que certains individus **changent de sexe au cours du temps**. Cela semble venir d'une erreur de remplissage de la base de données, nous pouvons retirer ces individus et observer s'il y a un changement sur le modèle.
+
+```{r}
+progressite <- data %>%
+  group_by(id) %>%
+  summarize(n_unique_sex = n_distinct(sex)) %>% filter(n_unique_sex > 1) 
+
+data$SexC <- ifelse(data$id == 21609 | data$id == 45492 | data$id == 48018, "Change","NoChange")
+data <- data[data$SexC == "NoChange",]
+data <- data[,-11]
+```
+
+```{r}
+fixed2 <- plm(dvexptot ~ age + sex + educyr + inctot + hinotcov + workev + himcare, data = data,
+                   model="within", index = c("id", "year"))
+
+fixed_cor2 <- coeftest(fixed2, vcov=vcovHC(fixed, method="arellano"))
+```
+
+```{r, results='asis', include = FALSE}
+stargazer(fixed2,fixed_cor2, type = 'html')
+```
+
+
+
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"></td><td colspan="2"><em>Variable dépendante : dvexptot</em></td></tr>
+<tr><td></td><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td><em>Modèle EF</em></td><td><em>Modèle EF corrigé</em></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">age</td><td>-6.063</td><td>-6.063</td></tr>
+<tr><td style="text-align:left"></td><td>(7.167)</td><td>(7.195)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">inctot</td><td>0.001<sup>***</sup></td><td>0.001<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.0002)</td><td>(0.0003)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">hinotcov2</td><td>-37.533</td><td>-37.533</td></tr>
+<tr><td style="text-align:left"></td><td>(33.388)</td><td>(27.801)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">workev2</td><td>-19.920</td><td>-19.920</td></tr>
+<tr><td style="text-align:left"></td><td>(71.695)</td><td>(33.522)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td style="text-align:left">himcare2</td><td>242.199<sup>***</sup></td><td>242.199<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(62.543)</td><td>(80.002)</td></tr>
+<tr><td style="text-align:left"></td><td></td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>103,114</td><td></td></tr>
+<tr><td style="text-align:left">R<sup>2</sup></td><td>0.001</td><td></td></tr>
+<tr><td style="text-align:left">R<sup>2</sup> ajusté</td><td>-1.369</td><td></td></tr>
+<tr><td style="text-align:left">F Statistic</td><td>6.435<sup>***</sup> (df = 5; 43502)</td><td></td></tr>
+<tr><td colspan="3" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td colspan="2" style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+***
+
+Hormis le fait que le coefficient associé à la variable `sex` n'est plus présent, nous n'observons pas de changement particulier que ce soit sur les signes des coefficients, leur valeur ou bien même les écart-types. Désormais les variables qui expliquent les dépenses dentaires sont `inctot` & `himcare`.
+
+<center><img src="`r url2`"></center>
+
+# EXERCICE 2 : Théorie
+
+## Question 1: Modèle ARIMA
+#### Simulez le modèle suivant
+
+$$Y_t=0.5Y_{t-1}+0.6\epsilon_{t-1}+\epsilon_t \text{ avec } T = 200$$
+
+```{r}
+set.seed(1)
+
+AR1 <-arima.sim(list(ar= 0.5, ma=0.6), n=200)
+
+ggplotly(ggplot(data.frame(AR1), aes(x = 1:200, y = AR1)) +
+  geom_line(color = "#577559") +
+  ggtitle("Modèle ARIMA(1,0,1)") +
+  xlab("Temps") +
+  ylab("Valeur") +
+  theme_bw()) 
+```
+
+
+## Question 2: Fonction ACF et PACF
+#### Représentez la fonction d’autocorrélation, et la fonction d’autocorrélation partielle. Commentez-les.
+
+```{r}
+acf2y(AR1, 10) %>% 
+  kbl( booktabs = T, linesep = "") %>%
+  kable_minimal(full_width = T)
+```
+
+Pour l'ACF, on peut observer un **pic à 0.7** environ puis une décroissance, cela veut dire qu'on a une corrélation significative entre les observations, donc le temps présent est corrélé à la dernière période passée ce qui peut indiquer la présence d'un **modèle AR** dans notre série chronologique.
+
+Pour l'autocorrélation partielle, on a un **pic positif à 0.7** ce qui peut indiquer qu'il y a une forte corrélation entre le temps $t$ et $t-1$, et donc un **modèle autorégressif AR** serait adapté. On observe aussi un **pic négatif significatif à 0.3** environ, on peut donc penser qu'il y a une relation négative entre la période $t$ et la période $t-2$, ce qui indiquerait la présence d'un **modèle à moyenne mobile** (MA).
+
+On peut donc conclure qu'il y a probablement une **combinaison de modèles AR et MA** dans notre série temporelle. Les pics positifs significatifs dans l'ACF indiquent une forte corrélation entre les observations passées et les observations actuelles, ce qui suggère un modèle AR. De même, le pic négatif significatif dans la PACF suggère une relation négative entre les observations actuelles et les observations passées, ce qui mène à un modèle MA.
+Par conséquent, le **modèle ARMA** pourrait être un bon choix pour modéliser cette série temporelle.
+
+## Question 3: modèle ARMA, AR et MA
+#### Ajustez un ARMA(1,1), un AR(1) et un MA(1).
+
+### Modèle ARMA(1,1):
+
+$$Y_t=0.18 +0.47Y_{t-1}+0.61\epsilon_{t-1}+\epsilon_t$$
+
+
+```{r}
+ARMA <- arima(AR1,order = c(1,0,1))
+```
+
+```{r, results='asis', include = FALSE}
+stargazer(ARMA, type = 'html')
+```
+
+<table style="margin:auto; text-align:center;"><tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td>ARMA</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">ar1</td><td>0.469<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.080)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td style="text-align:left">ma1</td><td>0.608<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.083)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td style="text-align:left">intercept</td><td>0.178</td></tr>
+<tr><td style="text-align:left"></td><td>(0.203)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>200</td></tr>
+<tr><td style="text-align:left">Log Likelihood</td><td>-275.272</td></tr>
+<tr><td style="text-align:left">sigma<sup>2</sup></td><td>0.913</td></tr>
+<tr><td style="text-align:left">Akaike Inf. Crit.</td><td>558.544</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+
+
+### Modèle AR(1):
+
+$$Y_t=0.20 + 0.72Y_{t-1}+\epsilon_t$$
+
+```{r}
+AR <- arima(AR1,order = c(1,0,0))
+```
+
+
+```{r, results='asis', include=FALSE}
+stargazer(AR, type = 'html')
+```
+
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td>AR</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">ar1</td><td>0.719<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.049)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td style="text-align:left">intercept</td><td>0.197</td></tr>
+<tr><td style="text-align:left"></td><td>(0.261)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>200</td></tr>
+<tr><td style="text-align:left">Log Likelihood</td><td>-293.698</td></tr>
+<tr><td style="text-align:left">sigma<sup>2</sup></td><td>1.100</td></tr>
+<tr><td style="text-align:left">Akaike Inf. Crit.</td><td>593.396</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+***
+
+### Modèle MA(1):
+
+$$Y_t=0.17 + 0.88\epsilon_{t-1}+\epsilon_t$$
+
+```{r}
+MA <- arima(AR1,order = c(0,0,1))
+```
+
+
+```{r, results='asis', include = FALSE}
+stargazer(MA, type = 'html')
+```
+
+***
+<table style="margin:auto; text-align:center;"><tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr>
+<tr><td style="text-align:left"></td><td>MA</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">ma1</td><td>0.882<sup>***</sup></td></tr>
+<tr><td style="text-align:left"></td><td>(0.039)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td style="text-align:left">intercept</td><td>0.166</td></tr>
+<tr><td style="text-align:left"></td><td>(0.135)</td></tr>
+<tr><td style="text-align:left"></td><td></td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left">Observations</td><td>200</td></tr>
+<tr><td style="text-align:left">Log Likelihood</td><td>-287.852</td></tr>
+<tr><td style="text-align:left">sigma<sup>2</sup></td><td>1.034</td></tr>
+<tr><td style="text-align:left">Akaike Inf. Crit.</td><td>581.704</td></tr>
+<tr><td colspan="2" style="border-bottom: 1px solid black"></td></tr><tr><td style="text-align:left"><em>Note:</em></td><td style="text-align:right"><sup>*</sup>p<0.1; <sup>**</sup>p<0.05; <sup>***</sup>p<0.01</td></tr>
+</table>
+***
+
+
+## Question 4: Bruits blancs ?
+#### Les résidus sont-ils des bruits blancs pour les trois modèles ?
+
+On va d'abord effectuer un test de Box-Pierce pour vérifier si les résidus sont des **bruits blancs** donc qu'ils soient indépendants et pas corrélés.
+
+$$\begin{cases} H_{0}: \epsilon_t \text{ sont indépendants (pas d'autocorrélation dans les résidus)}\\
+H_{1}: \epsilon_t \text{ ne sont pas indépendants (autocorrélation dans les résidus)} \end{cases}$$
+
+Si $H_0$ est rejetée (p-value < $\alpha$), les résidus ne sont pas considérés comme des bruits blancs.
+Si on accepte $H_0$ (p-value $\geq \alpha$), alors les résidus sont des bruits blancs.
+
+```{r}
+Res <- ARMA$residuals
+arm<-Box.test(Res)
+```
+
+```{r}
+ResAR <- AR$residuals
+a<-Box.test(ResAR)
+```
+
+```{r}
+ResMA <- MA$residuals
+m<-Box.test(ResMA)
+```
+
+```{r}
+tab<-rbind(c("ARMA", round(arm$p.value, 4)),
+           c("AR", round(a$p.value, 4)),
+           c("MA", round(m$p.value,4)))
+colnames(tab) <- c("Modèle", "p-value")
+
+
+tab %>%
+  kbl(caption = "Comparaison", booktabs = T, linesep = "") %>%
+  kable_minimal(full_width = T)
+```
+
+Les résidus du modèle ARMA(1,1) ont des p-value $> 0.05$ **donc c'est un bruit blanc**.
+Etant donné que les p-value des modèles AR et MA sont inférieurs à $0.05$, on en conclut que leurs résidus ne sont pas des bruits blancs.
+
+On vérifie que les résidus proviennent d'une distribution normale avec un test de normalité (ici le Shapiro test). Si les résidus suivent une distribution normale alors les erreurs dans les modèles sont **réparties de manière aléatoire** et ne sont influencées par aucune tendance. Cela assure que les conclusions basées sur le modèle sont **fiables et robustes**.
+
+
+$$\begin{cases} H_{0}: \text{les résidus suivent une distribution normale}\\
+H_{1}: \text{les résidus ne suivent pas une distribution normale} \end{cases}$$
+
+Si la p-value $\geq 0.05$, alors on accepte $H_0$ et les résidus suivent une distribution normale.
+
+```{r}
+arm_shapiro <- shapiro.test(Res)
+ar_shapiro <- shapiro.test(ResAR)
+ma_shapiro <- shapiro.test(ResMA)
+
+tab2 <- rbind(c("ARMA", round(arm_shapiro$p.value, 4)),
+                  c("AR", round(ar_shapiro$p.value, 4)),
+                  c("MA", round(ma_shapiro$p.value, 4)))
+colnames(tab2) <- c("Modèle", "p-value")
+
+
+tab2 %>%
+  kbl(caption = "Comparaison", booktabs = T, linesep = "") %>%
+  kable_minimal(full_width = T)
+```
+
+Ici, **tous les modèles ont des résidus provenant d'une distribution normale**.
+
+## Question 5: AIC
+#### Quel autre critère pourriez-vous utiliser pour choisir entre les 3 modèles ? Expliquer son principe. Quel modèle choisiriez-vous entre les 3 modèles ?
+
+L'autre critère qu'on pourrait utiliser est le **critère d'informations d'Akaike (AIC)**.
+
+Ce critère mesure la **qualité de prédiction** d'un modèle en comparant son erreur de prédiction aux informations apportées par son nombre de paramètres.
+
+$$AIC = ln(\frac{SCR_{\epsilon}}{T}) + \frac{2(p+q)}{T}$$
+
+```{r}
+tab3 <- rbind(c("ARMA", round(AIC(ARMA),2)),
+           c("AR", round(AIC(AR),2)),
+           c("MA", round(AIC(MA),2)))
+
+colnames(tab3) <- c("Modèle", "AIC")
+
+tab3 %>%
+  kbl(caption = "Comparaison", booktabs = T, linesep = "") %>%
+  kable_minimal(full_width = T)
+```
+
+Plus l'AIC est faible et plus le modèle est de bonne qualité.
+
+Le modèle qui a l'AIC le plus faible est considéré comme étant plus proche de la réalité, ici c'est **le modèle ARMA**.
+
+
+## Question 6: Cohérence 
+#### Est-ce cohérent avec le modèle de la question 1) ?
+
+Le modèle choisit est cohérent car à la question 1 on utilise aussi un modèle ARMA qui est un modèle à la fois autorégressif et à moyenne mobile. Le fait que l'AIC montre que le meilleur modèle soit l'ARMA(1,1) vient renforcer la pertinence de ce modèle, car il prend aussi en compte les relations dans les données passées et les erreurs.
+
+Le **modèle ARMA est le plus adapté** pour représenter notre simulation réalisée à la question 1, ce qui est logique étant donné que la simulation a été effectuée à partir d'un modèle ARMA.
+
+<center><img src="`r url2`"></center>
+
+
+
+
+
