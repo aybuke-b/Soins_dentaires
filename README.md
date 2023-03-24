@@ -17,6 +17,6 @@ Les variables sont les suivantes :
 
 
 
-# Résultats 
+## Résultats 
 
 On peut dire que les dépenses en soin dentaire s’explique par trois variables, le sex, la possesion ou non de l’aide Medicaire et du revenu des individus. Plus un individu est riche et plus il pourra allouer d’argent à ses dépenses dentaires. L’aide medicare permet également d’augmenter les dépenses en soin dentaire.
