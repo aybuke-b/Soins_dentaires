@@ -14,3 +14,9 @@ Les variables sont les suivantes :
 - *hinotcov* : n’a pas d’assurance santé (en excluant les plans d’épargne personnels) (1 non, 2 oui).
 - *workev* : a déjà travaillé (1 non, 2 oui, 7 a refusé de répondre, 8 non vérifié, 9 ne sait pas).
 - *himcare* : a l’assurance medicare (1 non, 2 oui).
+
+
+
+# Résultats 
+
+On peut dire que les dépenses en soin dentaire s’explique par trois variables, le sex, la possesion ou non de l’aide Medicaire et du revenu des individus. Plus un individu est riche et plus il pourra allouer d’argent à ses dépenses dentaires. L’aide medicare permet également d’augmenter les dépenses en soin dentaire.
